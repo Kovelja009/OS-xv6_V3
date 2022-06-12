@@ -114,6 +114,48 @@ sys_fstat(void)
 	return filestat(f, st);
 }
 
+int sys_share_mem(void)
+{	
+	struct proc *p = myproc();
+	char *name;
+	void *addr;
+	int size;
+	if(argstr(0, &name) < 0 || argint(2, &size) < 0 || argptr(1, (char **)&addr, size) < 0)
+		return -1;
+
+	for(int i = 0; i < SHARED_ARR; i++){
+		if(strncmp(name, p->shared_arr[i].name, 20) == 0)
+			return -2;
+		if(p->shared_arr[i].size == 0){
+			p->shared_arr[i].addr = addr;
+			strncpy(p->shared_arr[i].name, name, 20);
+			p->shared_arr[i].size = size;
+			return 0;
+		}
+	}
+	return -3;
+}
+
+int sys_get_shared(void)
+{
+	char* name;
+	void** addr;
+	if(argstr(0, &name) < 0 || argptr(1, (char **)&addr, 4) < 0)
+		return -1;
+
+	struct proc *p = myproc();
+
+	for(int i = 0; i < SHARED_ARR; i++){
+		if(strncmp(name, p->shared_arr[i].name, 20) == 0){
+			*addr = (int*)p->shared_arr[i].addr;
+			// cprintf("get_shared nasao: %s, a podatak je %d\n", p->shared_arr[i].name, *(int *)p->shared_arr[i].addr);
+			return 0;
+		}
+	}
+	
+	return -2;
+}
+
 // Create the path new as a link to the same inode as old.
 int
 sys_link(void)

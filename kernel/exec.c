@@ -49,7 +49,7 @@ exec(char *path, char **argv)
 			goto bad;
 		if(ph.vaddr + ph.memsz < ph.vaddr)
 			goto bad;
-		if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz)) == 0)
+		if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz)) == 0)	// izmenjen limit do 1GB
 			goto bad;
 		if(ph.vaddr % PGSIZE != 0)
 			goto bad;
@@ -92,6 +92,50 @@ exec(char *path, char **argv)
 		if(*s == '/')
 			last = s+1;
 	safestrcpy(curproc->name, last, sizeof(curproc->name));
+
+
+	////////////////////////////////////
+	//	mapiranje stranica
+		// int start_sz = USER_LIMIT_1GB;
+		// int new_sz = start_sz;
+		// int j = 0;
+		// for(int i = 0; i < SHARED_ARR; i++){
+		// 	if(curproc->shared_arr[i].size == 0)
+		// 		break;
+		// 	int curr_size = curproc->shared_arr[i].size;
+		// 	new_sz = start_sz + curr_size;
+		// 	if((new_sz = alloc_shared_struct(pgdir, start_sz, new_sz, curproc->parent_pgdir, curproc, j)) == 0){
+		// 		cprintf("neuspesan alloc_shared_struct\n");
+		// 		goto bad;
+		// 	}
+		// 	if(curr_size < PGSIZE)
+		// 		start_sz = start_sz + PGSIZE;
+		// 	else
+		// 		start_sz = start_sz + curr_size;
+		// 	// cprintf("size %d itema je %d\n", j, curr_size);
+		// 	j++;
+		// }
+		uint start_sz = USER_LIMIT_1GB;
+		uint a;
+		for(int i = 0; i < SHARED_ARR; i++){
+			if(curproc->shared_arr[i].size == 0)
+				break;
+			
+			pte_t *pte;
+			if((pte = walkpgdir(curproc->parent_pgdir, curproc->shared_arr[i].addr, 0)) == 0){
+				cprintf("exec: address should exist in parent!");
+				return -1;
+			}
+			a = PGROUNDDOWN(start_sz); 
+			uint offset = PTE_FLAGS(curproc->shared_arr[i].addr);
+			if((start_sz = my_mappages(pgdir, (char*)a, curproc->shared_arr[i].size, PTE_ADDR(*pte), PTE_W|PTE_U)) < 0){
+				cprintf("exec: mappages fault!\n");
+				return -1;
+			}
+			curproc->shared_arr[i].addr = a | offset;
+		}
+		
+	////////////////////////////////////
 
 	// Commit to the user image.
 	oldpgdir = curproc->pgdir;

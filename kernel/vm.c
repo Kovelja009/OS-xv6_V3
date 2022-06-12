@@ -32,7 +32,7 @@ seginit(void)
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page table pages.
-static pte_t *
+ pte_t *
 walkpgdir(pde_t *pgdir, const void *va, int alloc)
 {
 	pde_t *pde;
@@ -65,20 +65,50 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
 
 	a = (char*)PGROUNDDOWN((uint)va);
 	last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
+	int j = 0;
 	for(;;){
 		if((pte = walkpgdir(pgdir, a, 1)) == 0)
 			return -1;
-		if(*pte & PTE_P)
+		if(*pte & PTE_P){
+			cprintf("stanii\n");
 			panic("remap");
+		}
+		*pte = pa | perm | PTE_P;
+		// cprintf("Roditeljski: %d, dete: %d\n", pa, PTE_ADDR(*pte));
+		if(a == last)
+			break;
+		a += PGSIZE;
+		pa += PGSIZE;
+		j++;
+	}
+	// cprintf("Broj stranica: %d\n", j);
+	return 0;
+}
+
+
+uint
+my_mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
+{
+	char *a, *last;
+	pte_t *pte;
+
+	a = (char*)PGROUNDDOWN((uint)va);
+	last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
+	for(;;){
+		if((pte = walkpgdir(pgdir, a, 1)) == 0)
+			return -1;
+		if(*pte & PTE_P){
+			cprintf("stanii\n");
+			panic("remap");
+		}
 		*pte = pa | perm | PTE_P;
 		if(a == last)
 			break;
 		a += PGSIZE;
 		pa += PGSIZE;
 	}
-	return 0;
+	return (uint)(last + PGSIZE);
 }
-
 // There is one page table per process, plus one that's used when
 // a CPU is not running any process (kpgdir). The kernel uses the
 // current process's page table during system calls and interrupts;
@@ -223,8 +253,8 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
 	char *mem;
 	uint a;
-
-	if(newsz >= KERNBASE)
+	// izmena
+	if(newsz >= USER_LIMIT_1GB)
 		return 0;
 	if(newsz < oldsz)
 		return oldsz;
@@ -245,6 +275,49 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 			return 0;
 		}
 	}
+	return newsz;
+}
+
+int
+alloc_shared_struct(pde_t *pgdir, uint oldsz, uint newsz, pde_t *old_pgdir, struct proc *curproc, int item)
+{
+	char *mem;
+	uint a;
+	// izmena
+	if(newsz >= KERNBASE)
+		return 0;
+	if(newsz < oldsz)
+		return oldsz;
+
+	a = PGROUNDUP(oldsz);
+	int j = 0;
+	for(; a < newsz || j < 1; a += PGSIZE){
+		// mem = kalloc();
+		// if(mem == 0){
+		// 	cprintf("allocuvm out of memory\n");
+		// 	deallocuvm(pgdir, newsz, oldsz);
+		// 	return 0;
+		// }
+		// memset(mem, 0, PGSIZE);
+		pte_t *pte;
+		if(j == 1)
+			cprintf(" valid : %d\n", *(((int *)curproc->shared_arr[item].addr)+1));
+
+		if((pte = walkpgdir(old_pgdir, curproc->shared_arr[item].addr, 0)) == 0){
+			cprintf("alloc_shared_struct: address should exist in parent!");
+			deallocuvm(pgdir, newsz, oldsz);
+			return 0;
+		}
+		// cprintf("U shared_struct exec podatak: %d\n", *(int *)curproc->shared_arr[1].addr);
+		if(mappages(pgdir, (char*)a, PGSIZE, PTE_ADDR(*pte), PTE_W|PTE_U) < 0){
+			cprintf("allocuvm out of memory (2)\n");
+			deallocuvm(pgdir, newsz, oldsz);
+			return 0;
+		}
+		j++;
+	}
+
+	cprintf("%d okvira\n", j);
 	return newsz;
 }
 
@@ -287,7 +360,7 @@ freevm(pde_t *pgdir)
 
 	if(pgdir == 0)
 		panic("freevm: no pgdir");
-	deallocuvm(pgdir, KERNBASE, 0);
+	deallocuvm(pgdir, USER_LIMIT_1GB, 0);
 	for(i = 0; i < NPDENTRIES; i++){
 		if(pgdir[i] & PTE_P){
 			char * v = P2V(PTE_ADDR(pgdir[i]));

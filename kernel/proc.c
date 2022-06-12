@@ -92,6 +92,11 @@ found:
 
 	release(&ptable.lock);
 
+	//init shared structure
+		for(int i = 0; i < SHARED_ARR; i++)
+			p->shared_arr[i].size = 0;
+	//
+
 	// Allocate kernel stack.
 	if((p->kstack = kalloc()) == 0){
 		p->state = UNUSED;
@@ -199,6 +204,22 @@ fork(void)
 	np->sz = curproc->sz;
 	np->parent = curproc;
 	*np->tf = *curproc->tf;
+
+	// setting for child
+	for(int i = 0; i < SHARED_ARR; i++)
+		np->shared_arr[i] = curproc->shared_arr[i];
+
+	np->parent_pgdir = curproc->pgdir;
+
+		//cprintf("new: %d, old: %d\n", np->parent_pgdir, curproc->pgdir); 
+		// for(int i = 0; i < SHARED_ARR; i++){
+		// 	int val = *((int*)np->shared_arr[i].addr);
+		// 	cprintf("%d item: %s name, %d size %d     parent: %s name, %d size %d\n",
+		// 	i, np->shared_arr[i].name, np->shared_arr[i].size, val,
+		// 	curproc->shared_arr[i].name, curproc->shared_arr[i].size, curproc->shared_arr[i].addr);
+		// }
+	
+	//
 
 	// Clear %eax so that fork returns 0 in the child.
 	np->tf->eax = 0;
